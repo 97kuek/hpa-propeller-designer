@@ -43,8 +43,8 @@ def plot_geometry(geom_data, output_file="prop_design.png"):
     ax2.plot(r_R, beta, marker='s', color=color2, label='ねじり角 (Beta)')
     ax2.tick_params(axis='y', labelcolor=color2)
     
-    fig.tight_layout()
-    plt.title("プロペラ設計 断面形状")
+    plt.title("プロペラ設計 断面形状", pad=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(output_file, dpi=300)
     logging.info(f"Geometry plot saved to {output_file}")
     plt.show()
@@ -82,8 +82,8 @@ def plot_performance(perf_data, output_file="prop_performance.png"):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
     
-    fig.tight_layout()
-    plt.title("オフデザイン性能 (J - Ct - Cq)")
+    plt.title("オフデザイン性能 (J - Ct - Cq)", pad=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(output_file, dpi=300)
     logging.info(f"Performance plot saved to {output_file}")
     plt.show()
@@ -116,7 +116,7 @@ def plot_vrpm_map(V_grid, RPM_grid, Eff_grid, output_file="vrpm_efficiency_map.p
     ax.set_title('V-RPM 効率等高線マップ')
     ax.grid(True, linestyle='--', alpha=0.6)
     
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(output_file, dpi=300)
     logging.info(f"V-RPM Efficiency Map saved to {output_file}")
     plt.show()
@@ -192,8 +192,8 @@ def plot_structural_properties(struct_data, output_file="structural_properties.p
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
     
-    fig.tight_layout()
-    plt.title("ブレード構造特性 分布")
+    plt.title("ブレード構造特性 分布", pad=12)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     plt.savefig(output_file, dpi=300)
     logging.info(f"Structural Properties plot saved to {output_file}")
     plt.show()
