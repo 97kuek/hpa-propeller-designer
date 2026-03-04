@@ -20,12 +20,24 @@ environment:
 
 # 解析・XFOIL設定
 analysis:
-  n_stations: 5     # 設計する翼素の数（分割数）
+  n_stations: 5      # 設計する翼素の数（動作確認: 5、実設計: 20〜30 推奨）
   ncrit: 9.0         # 乱れ度合いの指標 (典型的な風洞環境で9.0)
   iter: 100          # 粘性計算の最大イテレーション
+  design_iters: 2    # 設計反復回数（翼型ブレンド→XROTOR設計→再ブレンドの繰り返し数）
+  cleanup_temp: true # 設計完了後に temp_work/ を自動削除するか
+  xfoil_timeout: 60  # XFOIL プロセス1ステーション当たりのタイムアウト秒数
   alpha_seq:         # 迎角のスイープ設定
     - "ASEQ 0 10 1.0"
     - "ASEQ 0 -5 -1.0"
+  j_sweep:           # オフデザイン解析のアドバンスレシオ(J)スイープ設定
+    j_margin_low: 0.4   # 設計Jからの下マージン（J_min = J_design - j_margin_low）
+    j_margin_high: 0.5  # 設計Jからの上マージン（J_max = J_design + j_margin_high）
+    j_step: 0.05        # スイープのステップ幅
+  vrpm_sweep:        # V-RPM 効率マップのスイープ設定
+    v_margin: 3.0       # 設計速度からの前後マージン [m/s]
+    rpm_margin: 40.0    # 設計RPMからの前後マージン [rpm]
+    n_points: 15        # 各軸の格子点数（合計 n_points^2 点を解析）
+    n_workers: 4        # 並列 XROTOR プロセス数（解析高速化）
 
 # 翼型のブレンド定義
 airfoils:

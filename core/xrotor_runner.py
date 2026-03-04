@@ -1,51 +1,61 @@
 import os
 import subprocess
 import re
+import logging
+import numpy as np
 
 XROTOR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "xrotor.exe")
 
 def write_aero_file(filepath, r_R, polar_data, re_ref="1.000E+05", re_exp="-0.2000"):
     """
     XROTORのAERO->READで読み込めるAero Sectionファイル(.txt)を出力する
+
+    揚力傾斜 (dCl/dα) は線形領域 (-2°〜4°) のデータに対して
+    最小二乗フィット（np.polyfit）を用いて算出する。
     """
     if not polar_data:
         raise ValueError("No polar data provided")
 
-    # 極曲線データから代表値を計算/抽出
-    cl_max = max([p['CL'] for p in polar_data])
-    cl_min = min([p['CL'] for p in polar_data])
-    cd_min = min([p['CD'] for p in polar_data])
+    cl_max  = max(p['CL'] for p in polar_data)
+    cl_min  = min(p['CL'] for p in polar_data)
+    cd_min  = min(p['CD'] for p in polar_data)
     
-    with open(filepath, 'w') as f:
+    with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"Aero data for r/R = {r_R:.3f}\n")
         
-        # polar_data からαが0付近の線形領域から実際の揚力傾斜を計算
-        linear_region = [p for p in polar_data if -2.0 <= p['alpha'] <= 4.0]
-        if len(linear_region) >= 2:
-            p1 = linear_region[0]
-            p2 = linear_region[-1]
+        # 線形揚力域でのデータを取得し、最小二乗フィットで揚力傾斜を推算
+        linear_region = [p for p in polar_data if -2.0 <= p['alpha'] <= 6.0]
+        if len(linear_region) >= 3:
+            alphas = np.array([p['alpha'] for p in linear_region]) * (np.pi / 180.0)  # rad
+            cls    = np.array([p['CL']    for p in linear_region])
+            # 1次多項式フィット（傾きが揚力傾斜 dCl/dα [1/rad]）
+            coeffs = np.polyfit(alphas, cls, 1)
+            dcl_da = coeffs[0]
+        elif len(linear_region) >= 2:
+            # データが少ない場合は両端の2点から推算
+            p1, p2 = linear_region[0], linear_region[-1]
             if p2['alpha'] != p1['alpha']:
-                dcl_da = (p2['CL'] - p1['CL']) / ((p2['alpha'] - p1['alpha']) * (3.14159 / 180.0))
+                dcl_da = (p2['CL'] - p1['CL']) / ((p2['alpha'] - p1['alpha']) * (np.pi / 180.0))
             else:
-                dcl_da = 0.1 * (180.0 / 3.14159)
+                dcl_da = 2.0 * np.pi  # デフォルト（薄翼理論値）
         else:
-            dcl_da = 0.1 * (180.0 / 3.14159) # デフォルト約2*pi
+            dcl_da = 2.0 * np.pi  # デフォルト（薄翼理論値）
             
         f.write(f"0.0   {dcl_da:.4f}  {dcl_da*0.5:.4f}  {cl_max:.4f}  {cl_min:.4f}\n")
         
-        # CDが最小となるデータポイントからCLを安全に取得
         cl_at_cdmin = min(polar_data, key=lambda x: x['CD'])['CL']
-        
-        # cdmin, clcdmin, dcd/dcl^2, mcrit
         f.write(f"{cd_min:.5f}   {cl_at_cdmin:.4f}   0.0100   0.8000\n")
         f.write(f"{re_ref}   {re_exp}\n")
 
-def run_xrotor_design(config, aero_files_dict, output_file="prop_design.txt"):
+def run_xrotor_design(config, aero_files_dict, output_file="prop_design.txt", log_dir="."):
     """
     設定ファイルと各Aeroファイルを用いてXROTOR DESIコマンドを操作する
+
+    Parameters
+    ----------
+    log_dir : str
+        xrotor_design.log の出力先ディレクトリ・デフォルト: カレントディレクトリ
     """
-    
-    # 絶対パスを保証
     output_path = os.path.abspath(output_file)
     
     if os.path.exists(output_path):
@@ -54,80 +64,67 @@ def run_xrotor_design(config, aero_files_dict, output_file="prop_design.txt"):
     p_conf = config.get('propeller', {})
     d_conf = config.get('design_point', {})
     
-    B = p_conf.get('B', 2)
-    R = p_conf.get('R', 1.0)
+    B    = p_conf.get('B',    2)
+    R    = p_conf.get('R',    1.0)
     Rhub = p_conf.get('Rhub', 0.1)
+    V    = d_conf.get('V',    7.5)
+    RPM  = d_conf.get('RPM',  120)
     
-    V = d_conf.get('V', 7.5)
-    RPM = d_conf.get('RPM', 120)
-    
-    target_type = d_conf.get('target', 'power')
-    target_value = d_conf.get('value', 200)
-    CL = d_conf.get('CL', 0.5)
+    target_type  = d_conf.get('target', 'power')
+    target_value = d_conf.get('value',  200)
+    CL           = d_conf.get('CL',     0.5)
 
-    # RPMからrps (n) を計算し、Advance ratio (J = V/(nD)) を求める
-    rps = RPM / 60.0
-    D = 2.0 * R
-    J = V / (rps * D)
-    
     commands = []
     
-    # 1. AERO セクションの定義
+    # AERO セクションの定義
     commands.append("AERO\n")
     sorted_r_R = sorted(aero_files_dict.keys())
     for idx, r_r in enumerate(sorted_r_R):
-        # パスをXROTOR実行ディレクトリ(cwd)からの相対パスとし、記号を統一
         aero_rel_path = os.path.relpath(aero_files_dict[r_r]).replace('\\', '/')
         if idx == 0:
-            # 最初の1つ目はデフォルト(idx=1)を上書き(EDIT->READ)
             commands.append("EDIT\n1\nREAD\n")
             commands.append(f"{aero_rel_path}\n")
-            commands.append(f"{r_r:.3f}\n") # r/Rを入力
-            commands.append("\n") # EDITメニューを抜ける
+            commands.append(f"{r_r:.3f}\n")
+            commands.append("\n")
         else:
-            # 2つ目以降はNEWで作成(EDITメニューに自動移行)してからREAD
             commands.append("NEW\n")
             commands.append("READ\n")
             commands.append(f"{aero_rel_path}\n")
-            commands.append(f"{r_r:.3f}\n") # r/Rを入力
-            commands.append("\n") # EDITメニューを抜ける
+            commands.append(f"{r_r:.3f}\n")
+            commands.append("\n")
             
-    commands.append("\n") # AEROメニュー全体を抜けてトップへ戻る
+    commands.append("\n")
     
-    # 2. ジオメトリ制約 (Hub等)の設定
-    # ここでは仮の最小限の操作（必要に応じてNACEやARBIを用いる）
-    
-    # 3. 設計メニュー
+    # 設計メニュー
     commands.append("DESI\n")
-    commands.append("EDIT\n") # EDITメニューに入り全パラメータを指定
-    
-    commands.append(f"B {B}\n") # ブレード数
-    commands.append(f"RT {R}\n") # 半径
-    commands.append(f"RH {Rhub}\n") # ハブ半径
-    commands.append(f"RW {Rhub}\n") # ハブウェイク変位ボディ半径(ハブと同じとする)
-    commands.append(f"V {V}\n") # フライト速度
+    commands.append("EDIT\n")
+    commands.append(f"B {B}\n")
+    commands.append(f"RT {R}\n")
+    commands.append(f"RH {Rhub}\n")
+    commands.append(f"RW {Rhub}\n")
+    commands.append(f"V {V}\n")
+    # No.7: 空気密度を config から設定（高度・環境対応）
+    rho = config.get('environment', {}).get('rho', 1.225)
+    commands.append(f"RHO {rho}\n")
     
     if target_type.lower() == 'power':
-        commands.append(f"R {RPM}\n") # RPMを指定
-        commands.append(f"P {target_value}\n") # パワーを指定(ここで計算が走る場合がある)
+        commands.append(f"R {RPM}\n")
+        commands.append(f"P {target_value}\n")
     else:
         commands.append(f"R {RPM}\n")
-        commands.append(f"T {target_value}\n") # 推力を指定
+        commands.append(f"T {target_value}\n")
         
-    commands.append(f"CC {CL}\n") # 一定の設計揚力係数を指定
-
-    commands.append("\n") # CC入力後のエンター
-    commands.append("\n") # EDITプロンプトから抜けて DESIトップへ
-    commands.append("\n") # DESIメニューから抜けて トップメニューへ
+    commands.append(f"CC {CL}\n")
+    commands.append("\n")
+    commands.append("\n")
+    commands.append("\n")
     
-    # 結果の保存 (トップメニューでSAVE実行)
-    # XROTORにはcwdからの相対パスまたは絶対パスを渡す
-    cwd = os.path.dirname(os.path.abspath(__file__))
+    cwd     = os.path.dirname(os.path.abspath(__file__))
     out_rel = os.path.relpath(output_path, cwd).replace('\\', '/')
     commands.append("SAVE\n")
     commands.append(f"{out_rel}\n")
-    commands.append("Y\n") # もし上書き確認が出た場合のため
-    commands.append("\n") # 念のため次のプロンプトに戻る
+    commands.append("Y\n")
+    commands.append("\n")
     commands.append("QUIT\n")
     
     try:
@@ -145,20 +142,20 @@ def run_xrotor_design(config, aero_files_dict, output_file="prop_design.txt"):
         except subprocess.TimeoutExpired:
             process.kill()
             stdout, stderr = process.communicate()
-            print("Error: XROTOR process timed out.")
+            logging.error("XROTOR design process timed out.")
             return False
         
-        xrotor_log_path = os.path.join(cwd, "..", "xrotor.log")
+        xrotor_log_path = os.path.join(log_dir, "xrotor_design.log")
         with open(xrotor_log_path, "w") as f:
             f.write(stdout)
             
         if not os.path.exists(output_path):
-            print("Warning: XROTOR design output failed. output_path does not exist.")
-            print(stdout)
+            logging.error("XROTOR design output failed. output_path does not exist.")
+            logging.debug(stdout)
             return False
             
     except Exception as e:
-        print(f"Error running XROTOR: {e}")
+        logging.error(f"Error running XROTOR: {e}")
         return False
         
     return True
@@ -178,8 +175,7 @@ def parse_xrotor_output(filepath):
     data_start = False
     for line in lines:
         if "ERROR" in line or "Error" in line:
-            # XROTOR内でエラーが発生している場合
-            print(f"XROTOR Output Error: {line.strip()}")
+            logging.error(f"XROTOR Output Error: {line.strip()}")
             return None
             
         if "r/R" in line and "C/R" in line and ("Beta0deg" in line or "beta" in line.lower()):
@@ -189,17 +185,14 @@ def parse_xrotor_output(filepath):
             continue
             
         if data_start:
-            # Fortran出力は列がくっつく場合があるので、単純なsplit()だとうまくいかない場合がある
-            # 幸い今回の出力はスペース区切りが維持されている。
             parts = line.split()
             if len(parts) >= 3:
                 try:
-                    r_R = float(parts[0].replace('D', 'E'))
-                    c_R = float(parts[1].replace('D', 'E'))
+                    r_R  = float(parts[0].replace('D', 'E'))
+                    c_R  = float(parts[1].replace('D', 'E'))
                     beta = float(parts[2].replace('D', 'E'))
                     data.append({'r/R': r_R, 'c/R': c_R, 'beta': beta})
                 except ValueError:
-                    # データの終わり
                     break
     
     return data

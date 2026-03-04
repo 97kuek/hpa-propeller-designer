@@ -28,6 +28,16 @@ output/
 .DS_Store
 Thumbs.db
 
+# 設計中間結果（ルートに出力される反復ファイル）
+prop_result_iter*.txt
+xrotor.log
+xrotor_analysis.log
+designer.log
+
+# テスト・デバッグ用の出力 PNG
+output_test*.png
+
 # エディタ設定
 .vscode/
 .idea/
+output/

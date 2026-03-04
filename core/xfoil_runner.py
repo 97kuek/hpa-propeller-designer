@@ -1,12 +1,19 @@
 import os
 import subprocess
-import shutil
+import logging
 
 XFOIL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "xfoil.exe")
 
-def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200, output_polar_file="polar.txt", alpha_seq=None):
+def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200,
+                    output_polar_file="polar.txt", alpha_seq=None, timeout=60):
     """
     XFOILを実行して、指定されたレイノルズ数における極曲線(Polar)データを生成する。
+
+    Parameters
+    ----------
+    timeout : int
+        XFOIL プロセスのタイムアウト秒数（デフォルト 60 秒）。
+        config.yaml の analysis.xfoil_timeout から取得して渡す。
     """
     if alpha_seq is None:
         alpha_seq = ["ASEQ 0 10 0.5", "ASEQ 0 -5 -0.5"]
@@ -18,15 +25,13 @@ def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200, outpu
         except OSError:
             pass
 
-    # 絶対パスをXFOILに渡すと長すぎる場合があるため、相対パスで運用することを推奨
-    # 実行ディレクトリをファイルのある場所とする
+    # 実行ディレクトリを翼型ファイルのある場所に設定
     cwd = os.path.dirname(os.path.abspath(airfoil_file))
     base_airfoil = os.path.basename(airfoil_file)
     
-    # PACCで指定する出力ファイル名は、実行ディレクトリ(cwd)からの相対・直接のファイル名とする
+    # PACCで指定する出力ファイル名は実行ディレクトリからの相対パスとする
     base_polar = os.path.relpath(polar_path, cwd).replace('\\', '/')
 
-    # コマンドの組み立て
     # PLOP G でグラフィックスを無効化（バックグラウンド実行のため）
     commands = [
         "PLOP\n",
@@ -44,7 +49,6 @@ def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200, outpu
         "PACC\n",
         f"{base_polar}\n",
         "\n",  # ダンプファイルは不要
-        # 迎角スイープ
     ] + [seq + "\n" for seq in alpha_seq] + [
         "PACC\n",
         "\n",
@@ -52,8 +56,6 @@ def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200, outpu
     ]
 
     try:
-        # XFOILをサブプロセスとして起動
-        # stdin=subprocess.PIPE で標準入力からコマンドを流し込む
         process = subprocess.Popen(
             [XFOIL_PATH],
             stdin=subprocess.PIPE,
@@ -63,22 +65,20 @@ def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200, outpu
             text=True
         )
         
-        # コマンド送信と実行完了待ち
         try:
-            stdout, stderr = process.communicate(input="".join(commands), timeout=60)
+            stdout, stderr = process.communicate(input="".join(commands), timeout=timeout)
         except subprocess.TimeoutExpired:
             process.kill()
             stdout, stderr = process.communicate()
-            print(f"Error: XFOIL process timed out for {base_airfoil}")
+            logging.error(f"XFOIL process timed out for {base_airfoil}")
             return False
         
-        # 実行成功したかの確認
         if not os.path.exists(polar_path):
-            print(f"Warning: XFOIL polar generation failed for {base_airfoil} at Re={reynolds}")
+            logging.warning(f"XFOIL polar generation failed for {base_airfoil} at Re={reynolds}")
             return False
             
     except Exception as e:
-        print(f"Error running XFOIL: {e}")
+        logging.error(f"Error running XFOIL: {e}")
         return False
         
     return True
@@ -95,8 +95,7 @@ def read_polar(polar_file):
     with open(polar_file, 'r') as f:
         lines = f.readlines()
         
-    # XFOILのPolarファイルのデータ部分は通常13行目以降から始まる
-    # 区切り線 "------" の次の行からデータとして読み取る
+    # XFOILのPolarファイルのデータ部分は区切り線 "------" の次の行から始まる
     data_start = False
     for line in lines:
         if "------" in line:

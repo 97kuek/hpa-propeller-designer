@@ -4,7 +4,7 @@ XFOILとXROTORを利用して、プロペラの設計・空力計算・構造解
 
 ## 組み込まれている理論と設計アルゴリズム
 
-本ツールは以下の4つのフェーズに基づいて、統合的な設計を行う。
+本ツールは以下の5つのフェーズに基づいて、統合的な設計を行う。
 
 ### 1. 翼型混合と解析データの取得
 
@@ -18,6 +18,7 @@ $$
 $$
 
 両翼型の座標点数が異なる場合は、一方を弧長パラメータ $s$ で均等再サンプルしてから補間する。
+前縁点検出は弧長中点に最も近い x 最小点を採用しており、非整列翼型でも安定して動作する。
 
 #### 1-2. 局所レイノルズ数・マッハ数の推算
 
@@ -36,7 +37,8 @@ $$
 #### 1-3. XFOILによる極曲線の生成
 
 推算した $(Re, Ma)$ を XFOIL に与え、迎角 $\alpha$ を $-5°$ から $+15°$ まで自動スイープさせ、各断面の **揚力係数 – 抗力係数 ポーラ** $(C_L, C_D)$ を取得する。
-この粘性ポーラデータは後の XROTOR 設計ステップにおける翼型性能テーブルとして使用される。
+
+揚力傾斜 $dC_L/d\alpha$ は線形域（$-2° \sim +6°$）のデータにNp.polyfit（最小二乗法）を適用して推算し、端点2点依存のバイアスを排除している。
 
 ### 2. 最小誘導損失理論（MIL）による最適プロペラ形状の設計
 
@@ -65,116 +67,36 @@ $$
 
 （$\phi_w$: ウェイク螺旋の流入角）
 
-#### 2-3. ララビーの最小誘導損失理論
-
-Larrabee (1979) はベッツ条件を満たしつつ、各ブレード断面の弦長 $c(r)$ とピッチ角（ねじり角）$\beta(r)$ を陽に逆算する設計法をまとめた。
-微小リング要素に働く推力 $dT$ とトルク $dQ$ を、翼素モーメント理論（BEM: Blade Element Momentum）と渦理論の両方から導き、それらを等置することで設計変数を決定する。
-
-**翼素理論による微分推力・微分トルク**（揚力・抗力係数を用いた表現）:
-
-$$
-dT = B \cdot \frac{1}{2}\rho W^2 c \left(C_L \cos\phi - C_D \sin\phi\right) dr
-$$
-
-$$
-dQ = B \cdot \frac{1}{2}\rho W^2 c \left(C_L \sin\phi + C_D \cos\phi\right) r\, dr
-$$
-
-（$B$: ブレード枚数, $\phi$: 局所流入角）
-
-**軸運動量・角運動量理論による微分推力・微分トルク**:
-
-$$
-dT = 4\pi r \rho V^2 a(1+a) F\, dr, \qquad dQ = 4\pi r^3 \rho V \Omega a'(1-a) F\, dr
-$$
-
-（$a$: 軸誘導係数, $a'$: 回転誘導係数, $F$: プラントルの翼端損失補正係数）
-
-**プラントルの翼端損失補正**:
-
-$$
-F = \frac{2}{\pi} \arccos\!\left(\exp\!\left(-\frac{B(R-r)}{2r\sin\phi}\right)\right)
-$$
-
-最適弦長 $c$ は、設計揚力係数 $C_{L,\text{des}}$ と局所流入角 $\phi$ から:
-
-$$
-\frac{Bc}{2\pi r} = \frac{4 F \sin^2\phi}{\sigma C_L}
-$$
-
-（$\sigma = C_L / (C_L \cos\phi - C_D \sin\phi)$: 有効揚阻比）
-
-最適ピッチ角は:
-
-$$
-\beta = \phi + \alpha_\text{des}
-$$
-
-（$\alpha_\text{des}$: 最大揚阻比を与える迎角）
-
 XROTORの `DESI` コマンドはこのアルゴリズムを内部で反復収束させ、最終的な $c(r)$ と $\beta(r)$ の分布を出力する。
 
 ### 3. オフデザイン性能解析
 
 #### 3-1. 前進比（アドバンスレシオ）によるパラメータ化
 
-プロペラの作動状態は**前進比 $J$** という1つの無次元量で特徴付けられる。
-
 $$
 J = \frac{V}{n D} = \frac{V}{2\pi\,\Omega\,R}
 $$
 
-$J$ が小さい → 機速に対して回転が速い（離陸・上昇モード）  
-$J$ が大きい → 機速に対して回転が遅い（高速巡航・過剰速度モード）
-
 #### 3-2. 推力・トルク係数の特性曲線
 
 XROTORの `OPER` モジュールにより $J$ をスイープすると、$(C_T, C_Q, \eta)$ の特性曲線が得られる。
-設計点 $J_\text{des}$ 付近で $\eta$ は最大値をとる山形分布を示し、$J$ が大きくなり推力係数 $C_T$ がゼロに近づく点（**ゼロ推力前進比** $J_0$）の付近では計算が数値発散しやすい。
-
 本ツールでは発散した点を NaN として検出し、pandas の線形補間（`interpolate`）でギャップを埋めることで、連続した滑らかな特性曲線を保証する。
 さらに効率 $\eta$ を物理的上限の $[0.0, 1.0]$ にクランプすることで、発散点由来の外れ値スパイクを除去している。
 
-#### 3-3. V-RPM 効率マトリクス
+#### 3-3. V-RPM 効率マトリクス（並列計算）
 
-飛行速度 $V \in [V_\text{des} - \Delta V,\; V_\text{des} + \Delta V]$ と回転数 $RPM \in [RPM_\text{des} - \Delta n,\; RPM_\text{des} + \Delta n]$ を $N\times N$ の格子点で全探索し、各格子点で XROTOR に `VELO` コマンドで直接 $(V, n)$ を入力して効率を取得する。
-これを Matplotlib の `contourf` で等高線表示することで、パイロットが最高効率を得るための最適な **ケイデンス（RPM）— 速度（V）** の組み合わせを一目で把握できる**戦略マップ**となる。
+飛行速度 $V$ と回転数 $RPM$ を $N\times N$ の格子点で全探索し、各格子点で XROTOR に `VELO`/`RPM` コマンドを入力して効率を取得する。  
+計算は `n_workers` 個の XROTOR プロセスに分割して**並列実行**され、デフォルト 4 ワーカーで約 4 倍の高速化が得られる。
 
 ### 4. 構造特性（断面積・断面二次モーメント）の解析
 
 #### 4-1. グリーンの定理による断面積の計算
 
-ブレンドされた翼型の座標列 $(x_i,\, y_i)$（$i = 0,1,\ldots,N-1$）を閉じた多角形とみなし、グリーンの定理を適用することで断面積 $A$ を数値積分なしに厳密解として算出できる。
-
 $$
 A = \frac{1}{2} \left|\sum_{i=0}^{N-1} (x_i y_{i+1} - x_{i+1} y_i)\right|
 $$
 
-（末尾 $N$ は先頭 $0$ に戻るものとする。これはシューレース公式（Shoelace formula）とも呼ばれる。）
-
-#### 4-2. 断面一次モーメントと重心（セントロイド）
-
-$$
-\bar{x} = \frac{1}{6A}\sum_{i} (x_i + x_{i+1})(x_i y_{i+1} - x_{i+1} y_i)
-$$
-
-$$
-\bar{y} = \frac{1}{6A}\sum_{i} (y_i + y_{i+1})(x_i y_{i+1} - x_{i+1} y_i)
-$$
-
-#### 4-3. 断面二次モーメント（慣性モーメント）
-
-重心まわりの断面二次モーメントは、グリーンの定理を2次形式に拡張して算出できる。
-
-$$
-I_{xx}^{(0)} = \frac{1}{12}\sum_{i} (y_i^2 + y_i y_{i+1} + y_{i+1}^2)(x_i y_{i+1} - x_{i+1} y_i)
-$$
-
-$$
-I_{yy}^{(0)} = \frac{1}{12}\sum_{i} (x_i^2 + x_i x_{i+1} + x_{i+1}^2)(x_i y_{i+1} - x_{i+1} y_i)
-$$
-
-平行軸の定理（Parallel Axis Theorem）で重心へ移動する。
+#### 4-2. 重心まわりの断面二次モーメント
 
 $$
 I_{xx} = I_{xx}^{(0)} - A\,\bar{y}^2, \qquad I_{yy} = I_{yy}^{(0)} - A\,\bar{x}^2
@@ -182,31 +104,105 @@ $$
 
 $I_{xx}$ はブレード面外方向（推力方向）の曲げ剛性に、$I_{yy}$ は面内方向（進行方向）の曲げ剛性に対応する。
 
-## 実行フローチャート
+### 5. 3D モデルの出力
 
-本ツールの完全自動化された実行フローチャートを以下に示す。
+設計済みブレード形状を以下のフォーマットで出力する。
 
-![フローチャート](./images/フローチャート.png)
+- **PNG** (`prop_3d.png`): Matplotlib 静止画
+- **STL** (`propeller.stl`): 3D プリント用メッシュ
+- **HTML** (`propeller_3d.html`): Plotly インタラクティブ 3D ビューア
 
 ## 環境構築と実行方法
 
-1. リポジトリをダウンロード（クローン）し、直下の `config.yaml` をテキストエディタで開いて、プロペラの設計仕様（半径、ブレード数、設計速度、設計RPMなど）を入力。使用する翼型の `.dat` ファイルは `airfoils/` ディレクトリの中に配置して指定する。
-2. 必要なPythonモジュール群（numpy, matplotlib, pandas, plotly, numpy-stl等）をインストールする。
+1. リポジトリをダウンロードし、`config.yaml` をエディタで設定して翼型 `.dat` を `airfoils/` に配置。
+2. 依存パッケージをインストール:
    ```bash
    pip install -r requirements.txt
    ```
-3. プログラムを起動する。引数に設定ファイルを指定する。
+3. 実行:
    ```bash
    python main.py config.yaml
    ```
-4. ログがターミナルへ流れ、XFOILやXROTORがバックグラウンドで自動的に起動と計算を繰り返す。
-5. 成功すると、`output/{プロペラ名}/` のディレクトリ内部にすべての解析結果画像・CSVデータが生成される。
+4. 設計済みファイルから部分再実行（Phase 3 以降のみ）:
+   ```bash
+   python main.py config.yaml --skip-phase 1,2
+   ```
+5. ログがターミナルへ流れ、成功すると `output/{プロペラ名}/` に全結果が生成される。
+
+## 設定ファイル (config.yaml) リファレンス
+
+```yaml
+propeller:
+  name: "sample"     # 出力フォルダ名（パス禁止文字 \ / : * ? " < > | は不可）
+  B: 2               # ブレード数
+  R: 1.5             # 半径 [m]
+  Rhub: 0.1          # ハブ半径 [m]
+
+design_point:
+  V: 7.4             # 設計飛行速度 [m/s]
+  RPM: 135           # 設計回転数 [rpm]
+  target: thrust     # 最適化目標: "power" or "thrust"
+  value: 24          # パワー[W] または推力[N] の値
+  CL: 0.5            # 設計揚力係数
+
+environment:
+  rho: 1.225         # 空気密度 [kg/m^3]
+  visc: 1.46e-5      # 動粘性係数 [m^2/s]
+
+analysis:
+  n_stations: 5      # 翼素数（動作確認: 5、実設計: 20〜30 推奨）
+  ncrit: 9.0         # XFOIL 乱れ指標
+  iter: 100          # 粘性計算最大イテレーション
+  design_iters: 2    # 設計反復回数
+  cleanup_temp: true # 完了後に temp_work/ を削除するか
+  xfoil_timeout: 60  # XFOIL タイムアウト秒数
+  alpha_seq:
+    - "ASEQ 0 10 1.0"
+    - "ASEQ 0 -5 -1.0"
+  j_sweep:
+    j_margin_low: 0.4
+    j_margin_high: 0.5
+    j_step: 0.05
+  vrpm_sweep:
+    v_margin: 3.0
+    rpm_margin: 40.0
+    n_points: 15      # 格子点数（合計 n_points^2 点を解析）
+    n_workers: 4      # 並列 XROTOR プロセス数
+
+airfoils:             # r/R の昇順でリスト
+  - r_R: 0.1
+    file: "airfoils/GEMINI.dat"
+  - r_R: 1.0
+    file: "airfoils/DAE51.dat"
+```
+
+## 出力ファイル一覧
+
+| ファイル名 | 内容 |
+|---|---|
+| `designer.log` | 実行ログ（コンソール出力と同一）|
+| `prop_result.txt` | 最終設計ファイル（XROTOR SAVE形式）|
+| `prop_result_iter*.txt` | 反復中間設計ファイル |
+| `xrotor_design.log` | XROTOR 設計フェーズの標準出力 |
+| `xrotor_analysis.log` | XROTOR 性能解析フェーズの標準出力 |
+| `vrpm_sweep.log` | V-RPM スイープの実行ログ |
+| `prop_design.png` | 弦長・ねじり角分布グラフ |
+| `prop_performance.png` | Ct-Cq-効率 vs J 特性曲線 |
+| `vrpm_efficiency_map.png` | V-RPM 効率等高線マップ |
+| `vrpm_3d.html` | V-RPM 効率 3D インタラクティブサーフェス |
+| `structural_properties.csv` | 断面積・断面二次モーメントのテーブル |
+| `structural_properties.png` | 断面構造特性グラフ |
+| `prop_3d.png` | プロペラ 3D 静止画 |
+| `propeller.stl` | STL メッシュ（3D プリント用）|
+| `propeller_3d.html` | Plotly インタラクティブ 3D ビューア |
+| `summary.json` | 設計サマリー（設計点・効率・完了フェーズ等）|
 
 ## ファイル構成
 
 ```
 ./
-├── main.py                  # メインエントリポイント
+├── main.py                  # メインエントリポイント（argparse + --skip-phase 対応）
+├── visualize_3d.py          # スタンドアロン 3D 可視化スクリプト
 ├── config.yaml              # 設計仕様の入力ファイル
 ├── requirements.txt
 ├── airfoils/                # 翼型 .dat ファイル格納ディレクトリ
@@ -214,11 +210,31 @@ $I_{xx}$ はブレード面外方向（推力方向）の曲げ剛性に、$I_{y
 │   └── DAE51.dat
 ├── core/
 │   ├── design.py            # Phase 1 & 2: 翼型ブレンド・XROTOR設計
-│   ├── analysis.py          # Phase 3: オフデザイン解析・V-RPMスイープ
+│   ├── analysis.py          # Phase 3: オフデザイン解析・V-RPMスイープ（並列）
 │   ├── structure.py         # Phase 4: 断面構造特性の計算
 │   ├── airfoil_utils.py     # 翼型ブレンドのユーティリティ
-│   └── xfoil_runner.py      # XFOILサブプロセス制御
-└── utils/
-    ├── config.py            # 設定ファイル読み込み
-    └── visualize.py         # 全グラフ描画・3Dモデル出力
+│   ├── xfoil_runner.py      # XFOILサブプロセス制御
+│   └── xrotor_runner.py     # XROTORサブプロセス制御
+├── utils/
+│   ├── config.py            # 設定ファイル読み込み・バリデーション
+│   └── visualize.py         # 全グラフ描画・3Dモデル出力
+├── tests/
+│   ├── test_config.py       # validate_config のユニットテスト
+│   ├── test_structure.py    # calculate_section_properties のユニットテスト
+│   └── test_airfoil_utils.py # normalize_airfoil / blend_airfoils のユニットテスト
+└── output/
+    └── {prop_name}/         # 全出力ファイルがここに集約される
+```
+
+## テスト実行
+
+```bash
+# pytest を使う場合
+pip install pytest
+pytest tests/ -v
+
+# pytest なしで直接実行する場合
+python tests/test_config.py
+python tests/test_structure.py
+python tests/test_airfoil_utils.py
 ```

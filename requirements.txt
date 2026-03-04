@@ -4,4 +4,4 @@ pyyaml
 matplotlib
 plotly
 numpy-stl
-dash
+pandas
