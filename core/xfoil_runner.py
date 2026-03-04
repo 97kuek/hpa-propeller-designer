@@ -4,6 +4,12 @@ import logging
 
 XFOIL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "xfoil.exe")
 
+# No.9: 起動時に実行ファイルの存在を確認
+if not os.path.exists(XFOIL_PATH):
+    import logging as _log
+    _log.warning(f"XFOIL executable not found: {XFOIL_PATH}\n"
+                 "  XFOIL が見つかりません。run_xfoil_polar() はすべて失敗します。")
+
 def run_xfoil_polar(airfoil_file, reynolds, mach, ncrit=9.0, max_iter=200,
                     output_polar_file="polar.txt", alpha_seq=None, timeout=60):
     """
@@ -92,7 +98,7 @@ def read_polar(polar_file):
         return []
 
     data = []
-    with open(polar_file, 'r') as f:
+    with open(polar_file, 'r', encoding='utf-8', errors='replace') as f:
         lines = f.readlines()
         
     # XFOILのPolarファイルのデータ部分は区切り線 "------" の次の行から始まる

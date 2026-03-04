@@ -26,6 +26,8 @@ analysis:
   design_iters: 2    # 設計反復回数（翼型ブレンド→XROTOR設計→再ブレンドの繰り返し数）
   cleanup_temp: true # 設計完了後に temp_work/ を自動削除するか
   xfoil_timeout: 60  # XFOIL プロセス1ステーション当たりのタイムアウト秒数
+  xrotor_timeout: 60 # XROTOR 実行のタイムアウト秒数
+  n_xfoil_workers: 4 # XFOIL 並列プロセス数（初期設計計算の高速化、設定は n_stations 以下推奨）
   alpha_seq:         # 迎角のスイープ設定
     - "ASEQ 0 10 1.0"
     - "ASEQ 0 -5 -1.0"

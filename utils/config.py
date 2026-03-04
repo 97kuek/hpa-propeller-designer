@@ -30,6 +30,17 @@ def validate_config(config: dict) -> list[str]:
                 for i, entry in enumerate(config[section]):
                     if 'r_R' not in entry or 'file' not in entry:
                         errors.append(f"airfoils[{i}] に 'r_R' または 'file' キーがありません。")
+                # No.10: r_R が昇順であることを確認（blend のために必須）
+                r_R_values = [e.get('r_R', None) for e in config[section]
+                              if isinstance(e, dict) and 'r_R' in e]
+                if len(r_R_values) > 1:
+                    for k in range(len(r_R_values) - 1):
+                        if r_R_values[k] >= r_R_values[k + 1]:
+                            errors.append(
+                                f"airfoils は r_R の昇順で定義する必要があります。"
+                                f" airfoils[{k}].r_R={r_R_values[k]} >= airfoils[{k+1}].r_R={r_R_values[k+1]}"
+                            )
+                            break
             continue
 
         for key in keys:

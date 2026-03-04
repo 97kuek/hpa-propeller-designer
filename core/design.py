@@ -96,7 +96,9 @@ def design_propeller(config, final_output="prop_result.txt"):
         aero_files      = {}
         failed_stations = []
         
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        # No.3/5: max_workers を config から取得（デフォルト 4、コア数超過防止）
+        n_xfoil_workers = config['analysis'].get('n_xfoil_workers', 4)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=n_xfoil_workers) as executor:
             futures = {
                 executor.submit(
                     process_station,
@@ -147,6 +149,22 @@ def design_propeller(config, final_output="prop_result.txt"):
                 logging.info("------------------------------")
                 for row in geom_data:
                     logging.info(f"  {row['r/R']:.4f}  {row['c/R']:.4f}  {row['beta']:.2f}")
+
+                # No.11: c/R 分布の健全性チェック
+                c_R_vals = [row['c/R'] for row in geom_data]
+                if any(v <= 0 for v in c_R_vals):
+                    logging.warning("[WARNING] c/R に負またはゼロの値が含まれています。"
+                                    " XROTOR の奓戥した可能性があります。")
+                max_c_R = max(c_R_vals)
+                for k in range(len(c_R_vals) - 1):
+                    ratio = c_R_vals[k + 1] / (c_R_vals[k] + 1e-9)
+                    if ratio > 2.0:
+                        logging.warning(
+                            f"[WARNING] c/R が r/R={geom_data[k+1]['r/R']:.3f} で急増しています"
+                            f" ({c_R_vals[k]:.4f} -> {c_R_vals[k+1]:.4f})。"
+                            " 設計条件または翼型データを確認してください。"
+                        )
+                        break
         else:
             logging.error(f"\nXROTOR Optimization Failed at Iteration {iteration}.")
             return None

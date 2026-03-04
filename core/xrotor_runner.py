@@ -6,6 +6,12 @@ import numpy as np
 
 XROTOR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "xrotor.exe")
 
+# No.9: 起動時に実行ファイルの存在を確認
+if not os.path.exists(XROTOR_PATH):
+    import logging as _log
+    _log.warning(f"XROTOR executable not found: {XROTOR_PATH}\n"
+                 "  XROTOR が見つかりません。run_xrotor_design() はすべて失敗します。")
+
 def write_aero_file(filepath, r_R, polar_data, re_ref="1.000E+05", re_exp="-0.2000"):
     """
     XROTORのAERO->READで読み込めるAero Sectionファイル(.txt)を出力する
@@ -169,7 +175,7 @@ def parse_xrotor_output(filepath):
         return None
         
     data = []
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
         lines = f.readlines()
         
     data_start = False

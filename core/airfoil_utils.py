@@ -111,7 +111,7 @@ def save_airfoil(filepath, name, coords):
     """
     翼型座標をXFOIL互換の.datフォーマットで保存する。
     """
-    with open(filepath, 'w') as f:
+    with open(filepath, 'w', encoding='utf-8') as f:
         f.write(f"{name}\n")
         f.write("     \n")
         for p in coords:

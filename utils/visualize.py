@@ -246,7 +246,7 @@ def export_3d_models(geom_data, config, out_dir="."):
         return
 
     num_blades = config['propeller'].get('B', 2)
-    stations = build_blade_stations(geom_data, config)
+    stations = build_blade_stations(geom_data, config, work_dir="temp_work")
 
     stl_path = os.path.join(out_dir, "propeller.stl")
     html_path = os.path.join(out_dir, "propeller_3d.html")

@@ -6,6 +6,14 @@ import numpy as np
 import pandas as pd
 import concurrent.futures
 
+# No.14: tqdm はオプショナル依存（未インストール時も動作する）
+try:
+    from tqdm import tqdm as _tqdm
+    HAS_TQDM = True
+except ImportError:
+    HAS_TQDM = False
+    _tqdm = None
+
 XROTOR_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "xrotor.exe")
 
 def run_performance_sweep(prop_file, config, out_dir="."):
@@ -221,16 +229,34 @@ def run_vrpm_sweep(prop_file, config, out_dir="."):
 
     try:
         with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-            futures = [
+            futures_list = [
                 executor.submit(_run_vrpm_chunk, XROTOR_PATH, prop_file, chunk, 120)
                 for chunk in chunks
             ]
-            for fut in concurrent.futures.as_completed(futures):
+
+            # No.14: tqdm でチャンク単位の進捗を表示
+            completed = 0
+            desc = f"V-RPM sweep ({len(all_points)} pts)"
+            if HAS_TQDM:
+                pbar = _tqdm(total=len(all_points), desc=desc, unit="pt", leave=True)
+            else:
+                pbar = None
+
+            for fut in concurrent.futures.as_completed(futures_list):
                 try:
-                    for (i, j, eff) in fut.result():
+                    results = fut.result()
+                    for (i, j, eff) in results:
                         Eff_grid[i, j] = eff
+                    completed += len(results)
+                    if pbar:
+                        pbar.update(len(results))
+                    else:
+                        logging.info(f"  V-RPM sweep progress: {completed}/{len(all_points)} pts")
                 except Exception as e:
                     logging.error(f"V-RPM chunk exception: {e}")
+
+            if pbar:
+                pbar.close()
 
         log_path = os.path.join(out_dir, "vrpm_sweep.log")
         with open(log_path, 'w') as f:

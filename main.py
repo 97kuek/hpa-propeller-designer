@@ -196,20 +196,41 @@ def main():
     # Phase 5: 3D Visualization and Export
     if 5 not in skip_phases:
         logging.info("\n--- Phase 5: 3D Visualization & Export ---")
+        p5_ok = []  # 完了済みサブフェーズリスト
         try:
             from visualize_3d import build_blade_stations, plot_propeller_3d
             from visualize_3d import export_stl_from_stations, export_plotly_html_from_stations
             num_blades = config['propeller'].get('B', 2)
             stations   = build_blade_stations(geom_data, config, work_dir="temp_work")
-            png_3d  = os.path.join(out_dir, "prop_3d.png")
-            stl_path  = os.path.join(out_dir, "propeller.stl")
+
+            png_3d = os.path.join(out_dir, "prop_3d.png")
+            try:
+                plot_propeller_3d(geom_data, config, save_path=png_3d, show=False)
+                p5_ok.append("3d_png")
+            except Exception as e:
+                logging.warning(f"3D PNG 生成失敗: {e}")
+
+            stl_path = os.path.join(out_dir, "propeller.stl")
+            try:
+                export_stl_from_stations(stations, filename=stl_path, num_blades=num_blades)
+                p5_ok.append("stl")
+            except Exception as e:
+                logging.warning(f"STL 出力失敗: {e}")
+
             html_path = os.path.join(out_dir, "propeller_3d.html")
-            plot_propeller_3d(geom_data, config, save_path=png_3d, show=False)
-            export_stl_from_stations(stations, filename=stl_path, num_blades=num_blades)
-            export_plotly_html_from_stations(stations, filename=html_path, num_blades=num_blades)
-            phases_completed.append("3d_export")
+            try:
+                export_plotly_html_from_stations(stations, filename=html_path, num_blades=num_blades)
+                p5_ok.append("html")
+            except Exception as e:
+                logging.warning(f"Plotly HTML 出力失敗 (plotly 未インストールの可能性): {e}")
+
+            # No.6: 少なくとも1つ完了されたら 3d_export とマーク
+            if p5_ok:
+                phases_completed.append("3d_export")
+            logging.info(f"Phase 5 完了: {', '.join(p5_ok) if p5_ok else 'なし'}")
+
         except Exception as e:
-            logging.warning(f"3D Export failed: {e}")
+            logging.warning(f"Phase 5 (3D出力) 全体が失敗: {e}")
     else:
         logging.info("Phase 5 skipped.")
 
