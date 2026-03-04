@@ -180,36 +180,41 @@ def build_blade_stations(geom_data: list[dict],
     """
     各半径断面の 3D 座標を積み上げた station リストを返す。
     各 station は (n_pts, 3) の ndarray で、列は (X, Y, Z)。
-    座標系:
-        Z 軸 = ブレード半径方向（外向き）
-        X 軸 = コード方向（回転面内）
-        Y 軸 = 推力方向
+    座標系（右手系）:
+        X 軸 = ブレード半径方向（ハブ→翼端）
+        Y 軸 = コード方向（回転面内）
+        Z 軸 = 推力方向（ロータ軸）
+    各断面は x=r の X=const 平面上に置かれ、
+    ねじり角 beta だけ Y-Z 平面内で回転される。
     """
-    R           = config["propeller"]["R"]
+    R            = config["propeller"]["R"]
     airfoils_cfg = config["airfoils"]
-    stations    = []
+    stations     = []
 
     for row in geom_data:
         r_R      = row["r/R"]
         c_R      = row["c/R"]
         beta_deg = row["beta"]
 
-        c       = c_R * R
-        r       = r_R * R
+        c        = c_R * R          # 実弦長 [m]
+        r        = r_R * R          # 半径位置 [m]
         beta_rad = np.radians(beta_deg)
 
         coords = get_airfoil_coords(airfoils_cfg, r_R, n_pts)
 
-        # 1/4 コードをピッチ軸に合わせてシフト
-        x = (coords[:, 0] - 0.25) * c
-        y =  coords[:, 1]         * c
+        # 1/4 コードを原点（ピッチ軸）に合わせてシフト・スケール
+        xc = (coords[:, 0] - 0.25) * c   # コード方向 → Y 軸へ配置
+        yc =  coords[:, 1]         * c   # 翼厚方向  → Z 軸へ配置（推力軸方向）
 
-        # ねじり角 beta で回転（コード‐推力平面内）
-        X_rot = x * np.cos(beta_rad) - y * np.sin(beta_rad)
-        Y_rot = x * np.sin(beta_rad) + y * np.cos(beta_rad)
-        Z_rot = np.full_like(x, r)
+        # ねじり角 beta で Y-Z 平面内回転
+        #   Y_rot =  xc*cos(b) - yc*sin(b)
+        #   Z_rot =  xc*sin(b) + yc*cos(b)
+        Y_rot = xc * np.cos(beta_rad) - yc * np.sin(beta_rad)
+        Z_rot = xc * np.sin(beta_rad) + yc * np.cos(beta_rad)
 
-        stations.append(np.column_stack([X_rot, Y_rot, Z_rot]))
+        # X = r (半径位置、定数), Y = Y_rot, Z = Z_rot
+        station_pts = np.column_stack([np.full_like(xc, r), Y_rot, Z_rot])
+        stations.append(station_pts)
 
     return stations
 
@@ -217,12 +222,13 @@ def build_blade_stations(geom_data: list[dict],
 def rotate_blade(stations: list[np.ndarray], angle_rad: float) -> list[np.ndarray]:
     """
     ブレード全体をロータ軸（Z 軸）まわりに angle_rad 回転させる。
-    ここでは X‐Y 平面で回転し、Z はそのまま。
+    X-Y 平面で回転し、Z（推力軸）はそのまま。
     """
     cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
-    rot = np.array([[cos_a, -sin_a, 0],
-                    [sin_a,  cos_a, 0],
-                    [0,      0,     1]])
+    # Z軸まわりの回転行列（X-Y を回転）
+    rot = np.array([[ cos_a, -sin_a, 0],
+                    [ sin_a,  cos_a, 0],
+                    [     0,      0, 1]])
     return [st @ rot.T for st in stations]
 
 
@@ -296,34 +302,35 @@ def plot_propeller_3d(geom_data: list[dict],
                                    alpha=0.6, linewidth=0.5)
             ax.add_collection3d(cap)
 
-    # ── ハブ（簡易円柱）
-    R_hub = config["propeller"].get("Rhub", 0.05)
+    # ── ハブ（簡易円柱）: X-Y 平面の円 × Z軸方向の高さ
+    R_hub     = config["propeller"].get("Rhub", 0.05)
     theta_hub = np.linspace(0, 2 * np.pi, 60)
-    z_hub     = np.linspace(-R_hub * 0.5, R_hub * 0.5, 8)
+    z_hub     = np.linspace(-R_hub * 0.8, R_hub * 0.8, 8)
     Th, Zh    = np.meshgrid(theta_hub, z_hub)
-    Xh = R_hub * np.cos(Th)
-    Yh = R_hub * np.sin(Th)
+    Xh = R_hub * np.cos(Th)   # X軸（半径方向と同平面）
+    Yh = R_hub * np.sin(Th)   # Y軸（コード方向と同平面）
     ax.plot_surface(Xh, Yh, Zh,
-                    color="#607D8B", alpha=0.6, linewidth=0,
+                    color="#607D8B", alpha=0.7, linewidth=0,
                     antialiased=True)
 
     # ── 軸設定
-    R  = config["propeller"]["R"]
+    R   = config["propeller"]["R"]
     lim = R * 1.05
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
-    ax.set_zlim(-lim * 0.4, lim * 1.2)
+    ax.set_zlim(-lim * 0.15, lim * 0.15)
 
-    ax.set_xlabel("X [m]")
-    ax.set_ylabel("Y [m]")
-    ax.set_zlabel("Z (半径方向) [m]")
+    ax.set_xlabel("X — 半径方向 [m]", labelpad=8)
+    ax.set_ylabel("Y — コード方向 [m]", labelpad=8)
+    ax.set_zlabel("Z — 推力軸 [m]", labelpad=8)
     ax.set_title(f"プロペラ 3D 形状: {prop_name}\n"
                  f"R={R:.2f} m, B={B} blades, "
                  f"{len(geom_data)} stations",
                  fontsize=13, pad=14)
 
-    ax.view_init(elev=25, azim=-45)
-    ax.set_box_aspect([1, 1, 0.8])
+    # ブレードが X-Y に広がるので真上やや傾けた視点が見やすい
+    ax.view_init(elev=30, azim=20)
+    ax.set_box_aspect([1, 1, 0.1])
 
     fig.tight_layout()
 
