@@ -103,9 +103,11 @@ def parse_performance_output_from_stdout(stdout_text, expected_j_values=None):
                 eff_val = 0.0
                 if m_eff:
                     eff_val = float(m_eff.group(1))
+                    if not (0.0 <= eff_val <= 1.0):
+                        eff_val = 0.0
                 
                 if abs(ct_val) < 10.0 and abs(cp_val) < 10.0:
-                    parsed[round(j_val, 4)] = {'J': j_val, 'Ct': ct_val, 'Cq': cp_val, 'Efficiency': max(0.0, eff_val)}
+                    parsed[round(j_val, 4)] = {'J': j_val, 'Ct': ct_val, 'Cq': cp_val, 'Efficiency': eff_val}
         except Exception:
             pass
             
