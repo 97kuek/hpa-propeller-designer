@@ -26,12 +26,10 @@ $$ J = \frac{V}{n D} $$
 これにより推力係数 $C_T$、トルク係数 $C_Q$、効率 $\eta$ の連続的なカーブを得ることができる。
 また、速度 $V$ と $RPM$ を2次元マトリクス状に振って全探索を行い、パイロットのケイデンス戦略を決定づける **V-RPM効率コンターマップ（地形図）** も出力する。
 
-### 4. 構造特性の解析と3D化
+### 4. 構造特性の解析と可視化
 本プログラムはブレンドされた各2D翼型座標を読み込み、グリーンの定理を用いて以下の断面特性を数値積分で計算を行う。
 - **断面積 (Area)**: 重量の概算および引張応力の評価
 - **断面二次モーメント ($I_{xx}, I_{yy}$)**: 面内・面外に対する曲げ剛性の評価
-
-最後に、計算された各断面の弦長とピッチ角を空間座標として展開・回転し、3Dのポリゴンメッシュを構成。これを構造解析ソフトやCAD、3Dプリンタにそのまま投入できる **STLファイル** として出力する。
 
 ## 実行フローチャート
 
@@ -60,25 +58,21 @@ graph TD
         J -- V - RPM マトリクス探索 --> L[効率の2次元等高線データの生成 / 外れ値クランプ]
     end
     
-    subgraph Phase4 [Phase 4 & 5: 構造解析と可視化出力]
+    subgraph Phase4 [Phase 4: 構造解析と可視化出力]
         H -.-> M[core/structure.py 起動]
         M -- グリーンの定理積分 --> N[断面積 Area, 断面二次モーメント Ixx Iyy 算出]
         H -.-> O[utils/visualize.py 起動]
         
         K --> P[1. prop_performance.png]
         L --> Q[2. vrpm_efficiency_map.png]
-        L --> R[3. vrpm_3d.html 3Dモデル]
-        N --> S[4. structural_properties.png + csv]
-        H -.-> T[5. prop_design.png]
-        H -.-> U[6. propeller.stl 3DCADモデル生成]
+        N --> S[3. structural_properties.png]
+        H -.-> T[4. prop_design.png]
     end
 
     P --> Z((全データ output/ ディレクトリへ一括保存))
     Q --> Z
-    R --> Z
     S --> Z
     T --> Z
-    U --> Z
 ```
 
 ## 環境構築と実行方法

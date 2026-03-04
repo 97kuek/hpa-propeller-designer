@@ -58,28 +58,26 @@ def main():
     # Phase 3.5: V-RPM Efficiency Map
     logging.info("\n--- Phase 3.5: V-RPM Efficiency Map ---")
     map_png = os.path.join(out_dir, "vrpm_efficiency_map.png")
-    map_html = os.path.join(out_dir, "vrpm_3d.html")
     v_grid, rpm_grid, eff_grid = run_vrpm_sweep(prop_txt, config)
     if v_grid is not None:
         plot_vrpm_map(v_grid, rpm_grid, eff_grid, output_file=map_png)
-        export_vrpm_3d_html(v_grid, rpm_grid, eff_grid, filename=map_html)
     else:
         logging.warning("V-RPM Sweep failed or returned no data.")
     
     # Phase 4: Structural Properties
     logging.info("\n--- Phase 4: Structural Properties Calculation ---")
     struct_png = os.path.join(out_dir, "structural_properties.png")
-    struct_data = export_structural_properties(geom_data, config['airfoils'], config['propeller']['R'], output_file=struct_csv)
+    struct_data = export_structural_properties(geom_data, config['airfoils'], config['propeller']['R'], output_file=None)
     if struct_data:
         plot_structural_properties(struct_data, output_file=struct_png)
 
     # Phase 5: 3D Visualization and Export
-    logging.info("\n--- Phase 5: 3D Visualization & Export ---")
-    try:
-        # Pass the output directory
-        export_3d_models(geom_data, config, out_dir=out_dir)
-    except Exception as e:
-        logging.warning(f"3D Export failed: {e}")
+    # logging.info("\n--- Phase 5: 3D Visualization & Export ---")
+    # try:
+    #     # Pass the output directory
+    #     export_3d_models(geom_data, config, out_dir=out_dir)
+    # except Exception as e:
+    #     logging.warning(f"3D Export failed: {e}")
 
     logging.info("All processes complete.")
 
