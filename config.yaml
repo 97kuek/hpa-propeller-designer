@@ -1,8 +1,8 @@
 # プロペラの基本設定
 propeller:
-  name: "hpa_prop_01"   # プロペラの名前（出力フォルダ名に使用）
+  name: "sample"   # プロペラの名前（出力フォルダ名に使用）
   B: 2               # ブレード数
-  R: 1.6             # 半径 [m]
+  R: 1.5             # 半径 [m]
   Rhub: 0.1          # ハブ半径 [m]
 
 # 設計条件
@@ -30,6 +30,6 @@ analysis:
 # 翼型のブレンド定義
 airfoils:
   - r_R: 0.1         # 根元（ハブ）付近
-    file: "airfoils/DAE51.dat"  # 根元から使用
+    file: "airfoils/GEMINI.dat"  # 根元から使用
   - r_R: 1.0         # 先端
     file: "airfoils/DAE51.dat"
