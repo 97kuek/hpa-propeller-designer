@@ -1,7 +1,12 @@
 import matplotlib.pyplot as plt
+import matplotlib
 import logging
 import os
 import numpy as np
+
+# 日本語フォントの設定（Windows標準のMS Gothic）
+matplotlib.rcParams['font.family'] = 'MS Gothic'
+matplotlib.rcParams['axes.unicode_minus'] = False # マイナス記号の文字化け防止
 
 try:
     from stl import mesh
@@ -26,22 +31,23 @@ def plot_geometry(geom_data, output_file="prop_design.png"):
     fig, ax1 = plt.subplots(figsize=(10, 6))
     
     color1 = 'tab:blue'
-    ax1.set_xlabel('r/R (Non-dimensional Radius)')
-    ax1.set_ylabel('c/R (Chord Length)', color=color1)
-    ax1.plot(r_R, c_R, marker='o', color=color1, label='Chord (c/R)')
+    ax1.set_xlabel('r/R (無次元半径)')
+    ax1.set_ylabel('c/R (弦長比)', color=color1)
+    ax1.plot(r_R, c_R, marker='o', color=color1, label='弦長 (c/R)')
     ax1.tick_params(axis='y', labelcolor=color1)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
     ax2 = ax1.twinx()
     color2 = 'tab:red'
-    ax2.set_ylabel('Beta (Twist Angle) [deg]', color=color2)
-    ax2.plot(r_R, beta, marker='s', color=color2, label='Twist (Beta)')
+    ax2.set_ylabel('Beta (ねじり角) [deg]', color=color2)
+    ax2.plot(r_R, beta, marker='s', color=color2, label='ねじり角 (Beta)')
     ax2.tick_params(axis='y', labelcolor=color2)
     
     fig.tight_layout()
-    plt.title("Designed Propeller Geometry")
+    plt.title("プロペラ設計 断面形状")
     plt.savefig(output_file, dpi=300)
     logging.info(f"Geometry plot saved to {output_file}")
+    plt.show()
     plt.close()
 
 def plot_performance(perf_data, output_file="prop_performance.png"):
@@ -59,16 +65,16 @@ def plot_performance(perf_data, output_file="prop_performance.png"):
     
     fig, ax1 = plt.subplots(figsize=(10, 6))
     
-    ax1.set_xlabel('Advance Ratio (J = V/nD)')
-    ax1.set_ylabel('Thrust (Ct) / Torque (10*Cq)', color='tab:blue')
-    ax1.plot(j, ct, marker='o', color='tab:blue', label='Ct (Thrust Coeff)')
-    ax1.plot(j, cq, marker='s', color='tab:cyan', label='10 * Cq (Torque Coeff)')
+    ax1.set_xlabel('前進比 (J = V/nD)')
+    ax1.set_ylabel('推力係数 (Ct) / トルク係数 (10*Cq)', color='tab:blue')
+    ax1.plot(j, ct, marker='o', color='tab:blue', label='推力係数 (Ct)')
+    ax1.plot(j, cq, marker='s', color='tab:cyan', label='トルク係数 (10*Cq)')
     ax1.tick_params(axis='y', labelcolor='tab:blue')
     ax1.grid(True, linestyle='--', alpha=0.6)
     
     ax2 = ax1.twinx()
-    ax2.set_ylabel('Propeller Efficiency (eta)', color='tab:red')
-    ax2.plot(j, eff, marker='^', color='tab:red', label='Efficiency')
+    ax2.set_ylabel('推進効率 ($\eta$)', color='tab:red')
+    ax2.plot(j, eff, marker='^', color='tab:red', label='推進効率')
     ax2.tick_params(axis='y', labelcolor='tab:red')
     
     # 凡例の結合
@@ -77,9 +83,10 @@ def plot_performance(perf_data, output_file="prop_performance.png"):
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
     
     fig.tight_layout()
-    plt.title("Off-Design Performance (J - Ct - Cq)")
+    plt.title("オフデザイン性能 (J - Ct - Cq)")
     plt.savefig(output_file, dpi=300)
     logging.info(f"Performance plot saved to {output_file}")
+    plt.show()
     plt.close()
 
 def plot_vrpm_map(V_grid, RPM_grid, Eff_grid, output_file="vrpm_efficiency_map.png"):
@@ -102,16 +109,17 @@ def plot_vrpm_map(V_grid, RPM_grid, Eff_grid, output_file="vrpm_efficiency_map.p
     
     # Add colorbar
     cbar = fig.colorbar(cp)
-    cbar.set_label('Propeller Efficiency (eta)')
+    cbar.set_label('推進効率 ($\eta$)')
     
-    ax.set_xlabel('Flight Velocity V (m/s)')
-    ax.set_ylabel('Propeller Speed (RPM)')
-    ax.set_title('V-RPM Efficiency Map')
+    ax.set_xlabel('飛行速度 V (m/s)')
+    ax.set_ylabel('プロペラ回転数 (RPM)')
+    ax.set_title('V-RPM 効率等高線マップ')
     ax.grid(True, linestyle='--', alpha=0.6)
     
     fig.tight_layout()
     plt.savefig(output_file, dpi=300)
     logging.info(f"V-RPM Efficiency Map saved to {output_file}")
+    plt.show()
     plt.close()
 
 def export_vrpm_3d_html(V_grid, RPM_grid, Eff_grid, filename="vrpm_3d.html"):
@@ -165,18 +173,18 @@ def plot_structural_properties(struct_data, output_file="structural_properties.p
     
     # Area (cm^2)
     color1 = 'tab:blue'
-    ax1.set_xlabel('r/R (Non-dimensional Radius)')
-    ax1.set_ylabel('Cross Section Area [cm^2]', color=color1)
-    ax1.plot(r_R, area, marker='o', color=color1, label='Area', linewidth=2)
+    ax1.set_xlabel('r/R (無次元半径)')
+    ax1.set_ylabel('断面積 [cm^2]', color=color1)
+    ax1.plot(r_R, area, marker='o', color=color1, label='断面積', linewidth=2)
     ax1.tick_params(axis='y', labelcolor=color1)
     ax1.grid(True, linestyle='--', alpha=0.6)
     
     # Moment of Inertia (cm^4)
     ax2 = ax1.twinx()
     color2 = 'tab:red'
-    ax2.set_ylabel('Moment of Inertia Ixx, Iyy [cm^4]', color=color2)
-    ax2.plot(r_R, ixx, marker='^', linestyle='-', color=color2, label='I_xx (in-plane)')
-    ax2.plot(r_R, iyy, marker='s', linestyle='--', color='tab:orange', label='I_yy (out-of-plane)')
+    ax2.set_ylabel('断面二次モーメント Ixx, Iyy [cm^4]', color=color2)
+    ax2.plot(r_R, ixx, marker='^', linestyle='-', color=color2, label='I_xx (面内曲げ)')
+    ax2.plot(r_R, iyy, marker='s', linestyle='--', color='tab:orange', label='I_yy (面外曲げ)')
     ax2.tick_params(axis='y', labelcolor=color2)
     
     # Combined legend
@@ -185,9 +193,10 @@ def plot_structural_properties(struct_data, output_file="structural_properties.p
     ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
     
     fig.tight_layout()
-    plt.title("Blade Structural Section Properties Distribution")
+    plt.title("ブレード構造特性 分布")
     plt.savefig(output_file, dpi=300)
     logging.info(f"Structural Properties plot saved to {output_file}")
+    plt.show()
     plt.close()
 
 # ==========================================
